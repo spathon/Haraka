@@ -46,6 +46,8 @@ exports.load_config = function () {
         plugin.load_config();
     });
 
+    load_ip_list('ip', 'ip_whitelist');
+
     if (plugin.cfg.main && plugin.cfg.main.pause) {
         plugin.pause = plugin.cfg.main.pause * 1000;
         return;
@@ -55,7 +57,6 @@ exports.load_config = function () {
     plugin.pause = plugin.config.get('early_talker.pause', function () {
         plugin.load_config();
     });
-    load_ip_list('ip', 'ip_whitelist');
 };
 
 exports.early_talker = function(next, connection) {
