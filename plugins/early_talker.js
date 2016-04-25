@@ -1,5 +1,8 @@
 // This plugin checks for clients that talk before we sent a response
 
+var ipaddr = require('ipaddr.js');
+var isIPv6 = require('net').isIPv6;
+
 exports.register = function() {
     var plugin = this;
     plugin.load_config();
@@ -9,10 +12,34 @@ exports.register = function() {
 
 exports.load_config = function () {
     var plugin = this;
+    plugin.whitelist = {};
+
+    function load_ip_list(type, file_name) {
+        plugin.whitelist[type] = [];
+
+        var list = Object.keys(plugin.cfg[file_name]);
+
+        for (var i = 0; i < list.length; i++) {
+            try {
+                var addr = list[i];
+                if (addr.match(/\/\d+$/)) {
+                    addr = ipaddr.parseCIDR(addr);
+                }
+                else {
+                    addr = ipaddr.parseCIDR(addr + ((isIPv6(addr)) ? '/128' : '/32'));
+                }
+
+                plugin.whitelist[type].push(addr);
+            } catch (e) {
+            }
+        }
+
+        plugin.logdebug('whitelist {' + type + '} loaded from ' + file_name + ' with ' + plugin.whitelist[type].length + ' entries');
+    }
 
     plugin.cfg = plugin.config.get('early_talker.ini', {
         booleans: [
-            '+main.reject',
+            '+main.reject'
         ]
     },
     function () {
@@ -28,6 +55,7 @@ exports.load_config = function () {
     plugin.pause = plugin.config.get('early_talker.pause', function () {
         plugin.load_config();
     });
+    load_ip_list('ip', 'ip_whitelist');
 };
 
 exports.early_talker = function(next, connection) {
@@ -38,6 +66,14 @@ exports.early_talker = function(next, connection) {
         if (connection.early_talker) {
             connection.results.add(plugin, { skip: 'relay client'});
         }
+        return next();
+    }
+
+    // Don't delay whitelisted IPs
+    if (plugin.ip_in_list(connection.remote_ip)) { // check connecting IP
+        connection.transaction.results.add(plugin, {
+            skip: 'config-whitelist(ip)'
+        });
         return next();
     }
 
@@ -63,4 +99,22 @@ exports.early_talker = function(next, connection) {
     }
 
     setTimeout(function () { check(); }, pause);
+};
+
+exports.ip_in_list = function (ip) {
+    var plugin = this;
+    var ipobj = ipaddr.parse(ip);
+
+    var list = plugin.whitelist.ip;
+
+    for (var i = 0; i < list.length; i++) {
+        try {
+            if (ipobj.match(list[i])) {
+                return true;
+            }
+        } catch (e) {
+        }
+    }
+
+    return false;
 };
