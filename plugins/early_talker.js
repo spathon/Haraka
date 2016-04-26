@@ -12,30 +12,6 @@ exports.register = function() {
 
 exports.load_config = function () {
     var plugin = this;
-    plugin.whitelist = {};
-
-    function load_ip_list(type, file_name) {
-        plugin.whitelist[type] = [];
-
-        var list = Object.keys(plugin.cfg[file_name]);
-
-        for (var i = 0; i < list.length; i++) {
-            try {
-                var addr = list[i];
-                if (addr.match(/\/\d+$/)) {
-                    addr = ipaddr.parseCIDR(addr);
-                }
-                else {
-                    addr = ipaddr.parseCIDR(addr + ((isIPv6(addr)) ? '/128' : '/32'));
-                }
-
-                plugin.whitelist[type].push(addr);
-            } catch (e) {
-            }
-        }
-
-        plugin.logdebug('whitelist {' + type + '} loaded from ' + file_name + ' with ' + plugin.whitelist[type].length + ' entries');
-    }
 
     plugin.cfg = plugin.config.get('early_talker.ini', {
         booleans: [
@@ -46,7 +22,8 @@ exports.load_config = function () {
         plugin.load_config();
     });
 
-    load_ip_list('ip', 'ip_whitelist');
+    // Generate a white list of IP addresses
+    plugin.whitelist = plugin.load_ip_list(Object.keys(plugin.cfg['ip_whitelist']));
 
     if (plugin.cfg.main && plugin.cfg.main.pause) {
         plugin.pause = plugin.cfg.main.pause * 1000;
@@ -71,10 +48,8 @@ exports.early_talker = function(next, connection) {
     }
 
     // Don't delay whitelisted IPs
-    if (plugin.ip_in_list(connection.remote_ip)) { // check connecting IP
-        connection.transaction.results.add(plugin, {
-            skip: 'config-whitelist(ip)'
-        });
+    if (plugin.whitelist && plugin.ip_in_list(plugin.whitelist, connection.remote_ip)) { // check connecting IP
+        connection.results.add(plugin, { skip: 'whitelist' });
         return next();
     }
 
@@ -102,20 +77,51 @@ exports.early_talker = function(next, connection) {
     setTimeout(function () { check(); }, pause);
 };
 
-exports.ip_in_list = function (ip) {
-    var plugin = this;
+
+/**
+ * Check if the ip is whitelisted
+ *
+ * @param  {Array} whitelist A list of ipaddr objects
+ * @param  {String} ip       The remote IP to verify
+ * @return {Boolean}         True if is whitelisted
+ */
+exports.ip_in_list = function (whitelist, ip) {
     var ipobj = ipaddr.parse(ip);
 
-    var list = plugin.whitelist.ip;
-
-    for (var i = 0; i < list.length; i++) {
+    for (var i = 0; i < whitelist.length; i++) {
         try {
-            if (ipobj.match(list[i])) {
+            if (ipobj.match(whitelist[i])) {
                 return true;
             }
         } catch (e) {
         }
     }
-
     return false;
 };
+
+
+/**
+ * Convert config ip to ipaddr objects
+ *
+ * @param  {Array} list A list of IP addresses / subnets
+ * @return {Array}      The converted array
+ */
+exports.load_ip_list = function(list) {
+    var whitelist = [];
+
+    for (var i = 0; i < list.length; i++) {
+        try {
+            var addr = list[i];
+            if (addr.match(/\/\d+$/)) {
+                addr = ipaddr.parseCIDR(addr);
+            }
+            else {
+                addr = ipaddr.parseCIDR(addr + ((isIPv6(addr)) ? '/128' : '/32'));
+            }
+
+            whitelist.push(addr);
+        } catch (e) {
+        }
+    }
+    return whitelist;
+}
