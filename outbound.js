@@ -417,7 +417,7 @@ exports.send_email = function () {
     while (match = re.exec(contents)) {
         var line = match[1];
         line = line.replace(/\r?\n?$/, '\r\n'); // make sure it ends in \r\n
-        if (dot_stuffed === false && line.length > 3 && line.substr(0,1) === '.') {
+        if (dot_stuffed === false && line.length >= 3 && line.substr(0,1) === '.') {
             line = "." + line;
         }
         transaction.add_data(new Buffer(line));
@@ -894,7 +894,7 @@ HMailItem.prototype.found_mx = function (err, mxs) {
     var hmail = this;
     if (err) {
         this.logerror("MX Lookup for " + this.todo.domain + " failed: " + err);
-        if (err.code === dns.NXDOMAIN || err.code === 'ENOTFOUND') {
+        if (err.code === dns.NXDOMAIN || err.code === dns.NOTFOUND) {
             this.todo.rcpt_to.forEach(function (rcpt) {
                 hmail.extend_rcpt_with_dsn(rcpt, DSN.addr_bad_dest_system("No Such Domain: " + hmail.todo.domain));
             });
